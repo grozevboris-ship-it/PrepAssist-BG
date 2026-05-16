@@ -1,10 +1,20 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   
+  --color-brand-primary: #818cf8;
+  --color-brand-surface: #0a0a0a;
+  --color-brand-card: #121217;
+  --color-brand-border: #1f1f23;
+  
+  --color-status-critical: #f43f5e;
+  --color-status-warning: #fbbf24;
+  --color-status-success: #10b981;
+
   --color-rose-500: #f43f5e;
   --color-rose-600: #e11d48;
   --color-rose-700: #be123c;
@@ -12,5 +22,30 @@
 }
 
 body {
-  @apply bg-[#0a0a0a] text-[#d4d4d4];
+  @apply bg-[#0a0a0a] text-[#d4d4d4] font-sans;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #1f1f23;
+  border-radius: 10px;
+}
+
+.glass-card {
+  @apply bg-[#121217] border border-[#1f1f23] rounded-xl overflow-hidden shadow-2xl;
+}
+
+.nav-item {
+  @apply flex items-center gap-3 px-6 py-3 text-sm transition-all text-gray-500 hover:text-white cursor-pointer;
+}
+
+.nav-item-active {
+  @apply text-white border-l-2 border-brand-primary bg-white/5;
 }

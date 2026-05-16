@@ -4,8 +4,11 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import cookieSession from "cookie-session";
+import multer from "multer";
 
 dotenv.config();
+
+import officeParser from "officeparser";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || "",
@@ -31,6 +34,8 @@ async function startServer() {
   }));
 
   app.use(express.json());
+
+  const upload = multer({ storage: multer.memoryStorage() });
 
   // API Routes
   app.get("/api/auth/github/url", (req, res) => {
@@ -235,54 +240,136 @@ async function startServer() {
     }
   });
 
-  app.post("/api/gem/generate", async (req, res) => {
+  app.post("/api/meeting/prepare", upload.fields([{ name: 'notes' }, { name: 'slides' }]), async (req, res) => {
     try {
-      const { description } = req.body;
-      const prompt = `Create a unique, magical gemstone based on this description: "${description || 'random'}". 
-      Generate a name, a detailed physical description, its magical properties, its rarity level, and a short piece of ancient lore about it.`;
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      const { additionalNotes, model = "gemini-3-flash-preview" } = req.body;
+      const notesFile = files['notes']?.[0];
+      const slidesFile = files['slides']?.[0];
+
+      const supportedMimeTypes = [
+        "application/pdf", 
+        "image/png", 
+        "image/jpeg", 
+        "image/webp", 
+        "image/heic", 
+        "image/heif",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.ms-powerpoint"
+      ];
+      
+      if (notesFile && !supportedMimeTypes.includes(notesFile.mimetype)) {
+        return res.status(400).json({ error: `Unsupported file type for notes: ${notesFile.mimetype}. Please use PDF, Images, or PowerPoint.` });
+      }
+      if (slidesFile && !supportedMimeTypes.includes(slidesFile.mimetype)) {
+        return res.status(400).json({ error: `Unsupported file type for slides: ${slidesFile.mimetype}. Please use PDF, Images, or PowerPoint.` });
+      }
+
+      if (!notesFile && !slidesFile && !additionalNotes) {
+        return res.status(400).json({ error: "Please provide at least one input (notes PDF, slides, or manual notes)." });
+      }
+
+      const parts: any[] = [
+        { text: `You are a Meeting Prep Assistant. When given a Notes PDF and presentation slides, 
+you must output ONLY valid JSON with this structure:
+
+{
+  "summary": "2-3 sentence meeting overview",
+  "risks": ["risk 1", "risk 2", "risk 3"],
+  "talking_points": ["point 1", "point 2", "point 3"],
+  "next_steps": ["step 1", "step 2"],
+  "cover_image_prompt": "A detailed image generation prompt for this meeting"
+}
+
+Ground all outputs strictly in the provided documents. Do not hallucinate facts.
+        
+        ${additionalNotes ? `Additional Context from User: "${additionalNotes}"` : ""}` }
+      ];
+
+      if (notesFile) {
+        if (notesFile.mimetype.includes("presentation") || notesFile.mimetype.includes("powerpoint")) {
+          const pptText = await new Promise((resolve, reject) => {
+            officeParser.parseOffice(notesFile.buffer, (data: any, err: any) => {
+              if (err) reject(err);
+              else resolve(data);
+            });
+          });
+          parts.push({ text: `Extracted content from Notes PowerPoint: \n\n ${pptText}` });
+        } else {
+          parts.push({
+            inlineData: {
+              mimeType: notesFile.mimetype,
+              data: notesFile.buffer.toString("base64")
+            }
+          });
+        }
+      }
+
+      if (slidesFile) {
+        if (slidesFile.mimetype.includes("presentation") || slidesFile.mimetype.includes("powerpoint")) {
+          const pptText = await new Promise((resolve, reject) => {
+            officeParser.parseOffice(slidesFile.buffer, (data: any, err: any) => {
+              if (err) reject(err);
+              else resolve(data);
+            });
+          });
+          parts.push({ text: `Extracted content from Slides PowerPoint: \n\n ${pptText}` });
+        } else {
+          parts.push({
+            inlineData: {
+              mimeType: slidesFile.mimetype,
+              data: slidesFile.buffer.toString("base64")
+            }
+          });
+        }
+      }
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
+        model: model,
+        contents: { parts: parts },
         config: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              name: { type: Type.STRING },
-              description: { type: Type.STRING },
-              properties: { type: Type.ARRAY, items: { type: Type.STRING } },
-              rarity: { type: Type.STRING, enum: ["Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"] },
-              lore: { type: Type.STRING },
-              color: { type: Type.STRING, description: "Main color theme in hex or simple name" }
+              summary: { type: Type.STRING },
+              risks: { type: Type.ARRAY, items: { type: Type.STRING } },
+              talking_points: { type: Type.ARRAY, items: { type: Type.STRING } },
+              next_steps: { type: Type.ARRAY, items: { type: Type.STRING } },
+              cover_image_prompt: { type: Type.STRING }
             },
-            required: ["name", "description", "properties", "rarity", "lore", "color"]
+            required: ["summary", "risks", "talking_points", "next_steps", "cover_image_prompt"]
           }
         }
       });
 
-      res.json(JSON.parse(response.text || "{}"));
+      const text = response.text;
+      if (!text) {
+        throw new Error("Empty response from AI model.");
+      }
+      res.json(JSON.parse(text));
     } catch (error: any) {
-      console.error("Gem Generation Error:", error);
-      res.status(500).json({ error: error.message || "Failed to generate gem." });
+      console.error("Meeting Prep Error:", error);
+      const errorMessage = error.message || "Failed to analyze materials.";
+      res.status(error.status || 500).json({ error: errorMessage });
     }
   });
 
-  app.post("/api/gem/image", async (req, res) => {
+  app.post("/api/meeting/image", async (req, res) => {
     try {
-      const { gemData } = req.body;
-      const prompt = `A highly detailed, professional macro photograph of a magical gemstone named "${gemData.name}". 
-      It is described as: ${gemData.description}. It glows with ${gemData.color} energy and has crystalline facets. 
-      Cinematic lighting, dark background, 8k resolution, photorealistic.`;
+      const { imagePrompt, title, model = "gemini-3-flash-preview" } = req.body;
+      const prompt = `A professional, corporate-style conceptual cover image for a meeting titled "${title}". 
+      Visual concept: ${imagePrompt}. 
+      Style: Minimalist, modern glassmorphism, design, 8k resolution, suitable for a professional report cover.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
+        model: model,
         contents: {
           parts: [{ text: prompt }],
         },
         config: {
           imageConfig: {
-            aspectRatio: "1:1",
+            aspectRatio: "16:9",
             imageSize: "1K"
           }
         }
@@ -292,11 +379,12 @@ async function startServer() {
       if (part?.inlineData) {
         res.json({ imageUrl: `data:image/png;base64,${part.inlineData.data}` });
       } else {
+        console.error("Image generation failed. Response parts:", JSON.stringify(response.candidates?.[0]?.content?.parts));
         res.status(500).json({ error: "No image generated." });
       }
     } catch (error: any) {
       console.error("Image Generation Error:", error);
-      res.status(500).json({ error: error.message || "Failed to generate image." });
+      res.status(error.status || 500).json({ error: error.message || "Failed to generate image." });
     }
   });
 

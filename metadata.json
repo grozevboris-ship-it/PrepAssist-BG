@@ -1,6 +1,6 @@
 {
-  "name": "App PrepAssistBG",
-  "description": "An AI-powered preparation assistant and creative space for designing and managing modular components or 'gems'.",
+  "name": "Prep Assist BG",
+  "description": "An AI-powered meeting preparation assistant that generates structured meeting intelligence from notes and slides.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
