@@ -341,6 +341,12 @@ Ground all outputs strictly in the provided documents. Do not hallucinate facts.
 
 You must cite which document each risk came from. 
 Risks must be specific, not generic. Limit next steps to 3 max.
+
+Before outputting JSON, internally reason: 
+1. What is the core objective of this meeting?
+2. What could go wrong?
+3. What decisions need to be made?
+Then produce the JSON output.
         
         ${additionalNotes ? `Additional Context from User: "${additionalNotes}"` : ""}` }
       ];
