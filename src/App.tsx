@@ -55,7 +55,6 @@ export default function App() {
   const [report, setReport] = useState<MeetingReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [archive, setArchive] = useState<MeetingReport[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'analysis' | 'actions' | 'settings'>('dashboard');
   const [githubUser, setGithubUser] = useState<GithubUser | null>(null);
 
   const notesInputRef = useRef<HTMLInputElement>(null);
@@ -80,6 +79,10 @@ export default function App() {
   const fetchGithubUser = async () => {
     try {
       const res = await fetch("/api/auth/user");
+      if (!res.ok) {
+        console.warn("Failed to fetch user, status:", res.status);
+        return;
+      }
       const data = await res.json();
       setGithubUser(data.user);
     } catch (err) {
@@ -203,7 +206,6 @@ export default function App() {
       const newArchive = [report, ...archive];
       setArchive(newArchive);
       localStorage.setItem('meeting_archive', JSON.stringify(newArchive));
-      setActiveTab('analysis');
     }
   };
 
@@ -221,36 +223,7 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="flex-1 px-4 space-y-2">
-          <div 
-            onClick={() => setActiveTab('dashboard')}
-            className={`nav-item ${activeTab === 'dashboard' ? 'nav-item-active' : ''}`}
-          >
-            <LayoutDashboard size={18} />
-            <span className="font-medium">Dashboard</span>
-          </div>
-          <div 
-            onClick={() => setActiveTab('analysis')}
-            className={`nav-item ${activeTab === 'analysis' ? 'nav-item-active' : ''}`}
-          >
-            <BarChart3 size={18} />
-            <span className="font-medium">Analysis</span>
-          </div>
-          <div 
-            onClick={() => setActiveTab('actions')}
-            className={`nav-item ${activeTab === 'actions' ? 'nav-item-active' : ''}`}
-          >
-            <ListTodo size={18} />
-            <span className="font-medium">Actions</span>
-          </div>
-          <div 
-            onClick={() => setActiveTab('settings')}
-            className={`nav-item ${activeTab === 'settings' ? 'nav-item-active' : ''}`}
-          >
-            <SettingsIcon size={18} />
-            <span className="font-medium">Settings</span>
-          </div>
-        </nav>
+        <div className="flex-1"></div>
 
         {githubUser ? (
           <div className="p-6 border-t border-[#1f1f23] flex items-center gap-4">
@@ -259,13 +232,14 @@ export default function App() {
               <p className="text-xs font-bold text-white truncate">{githubUser.login}</p>
               <p className="text-[10px] text-gray-500">Authorized</p>
             </div>
-            <button onClick={handleLogout} className="text-gray-500 hover:text-red-500 transition-colors">
+            <button key="logout-btn" onClick={handleLogout} className="text-gray-500 hover:text-red-500 transition-colors">
               <LogOut size={14} />
             </button>
           </div>
         ) : (
           <div className="p-6 border-t border-[#1f1f23]">
              <button 
+              key="github-connect-btn"
               onClick={handleGithubConnect}
               className="w-full py-3 bg-[#111] hover:bg-brand-primary/10 border border-brand-primary/30 rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-all text-brand-primary"
              >
@@ -423,68 +397,8 @@ export default function App() {
                 {/* Dashboard Grid */}
                 <div className="grid lg:grid-cols-12 gap-8">
                   
-                  {/* Stats & Nav */}
-                  <div className="lg:col-span-4 space-y-6">
-                    <div className="glass-card p-6 space-y-8 bg-[#121217]">
-                       <div className="flex justify-between items-center">
-                          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Live Analysis</h3>
-                          <div className="w-2 h-2 rounded-full bg-status-warning animate-pulse"></div>
-                       </div>
-                       
-                       <div className="space-y-6">
-                         <div className="flex justify-between items-end border-b border-[#1f1f23] pb-4">
-                            <span className="text-sm text-gray-500">Duration</span>
-                            <span className="text-lg font-mono text-white">45:12 <span className="text-[10px] text-gray-600 uppercase">min</span></span>
-                         </div>
-                         <div className="flex justify-between items-end border-b border-[#1f1f23] pb-4">
-                            <span className="text-sm text-gray-500">Participants</span>
-                            <span className="text-lg font-mono text-white">12 <span className="text-[10px] text-gray-600 uppercase">Active</span></span>
-                         </div>
-                         <div className="space-y-2">
-                           <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest">
-                              <span className="text-gray-500">Sentiment Score</span>
-                              <span className="text-status-success">84% Positive</span>
-                           </div>
-                           <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                              <div className="h-full bg-status-success rounded-full w-[84%]"></div>
-                           </div>
-                         </div>
-                       </div>
-                    </div>
-
-                    <div className="space-y-4">
-                       <button className="w-full glass-card p-4 flex items-center justify-between text-left group hover:border-brand-primary/30 transition-all">
-                          <div className="flex items-center gap-4">
-                             <div className="w-10 h-10 rounded-lg bg-status-critical/10 flex items-center justify-center text-status-critical">
-                                <AlertTriangle size={20} />
-                             </div>
-                             <span className="text-xs font-bold uppercase tracking-widest text-gray-300">High-Priority Risks</span>
-                          </div>
-                          <ChevronRight size={16} className="text-gray-600 group-hover:text-white transition-colors" />
-                       </button>
-                       <button className="w-full glass-card p-4 flex items-center justify-between text-left group hover:border-brand-primary/30 transition-all border-l-2 border-brand-primary">
-                          <div className="flex items-center gap-4">
-                             <div className="w-10 h-10 rounded-lg bg-brand-primary/10 flex items-center justify-center text-brand-primary">
-                                <MessageSquare size={20} />
-                             </div>
-                             <span className="text-xs font-bold uppercase tracking-widest text-white">Talking Points</span>
-                          </div>
-                          <ChevronRight size={16} className="text-white" />
-                       </button>
-                       <button className="w-full glass-card p-4 flex items-center justify-between text-left group hover:border-brand-primary/30 transition-all">
-                          <div className="flex items-center gap-4">
-                             <div className="w-10 h-10 rounded-lg bg-status-success/10 flex items-center justify-center text-status-success">
-                                <CheckCircle2 size={20} />
-                             </div>
-                             <span className="text-xs font-bold uppercase tracking-widest text-gray-300">Action Items</span>
-                          </div>
-                          <ChevronRight size={16} className="text-gray-600 group-hover:text-white transition-colors" />
-                       </button>
-                    </div>
-                  </div>
-
                   {/* Connectivity Map / Hero */}
-                  <div className="lg:col-span-8 glass-card relative bg-[#0d0d12] h-[550px]">
+                  <div className="lg:col-span-12 glass-card relative bg-[#0d0d12] h-[550px]">
                     {report.imageUrl ? (
                       <img src={report.imageUrl} className="w-full h-full object-cover opacity-80" alt="" referrerPolicy="no-referrer" />
                     ) : (
@@ -633,37 +547,12 @@ export default function App() {
           </div>
         </main>
 
-        {/* Mobile FAB */}
-        <button className="lg:hidden fixed bottom-24 right-8 w-16 h-16 bg-brand-primary text-[#121217] rounded-full shadow-2xl flex items-center justify-center z-50">
-           <Plus size={24} />
-        </button>
-
         {/* Floating Success Notification Placeholder */}
         {isLoading && (
           <div className="fixed bottom-32 left-1/2 -translate-x-1/2 bg-status-success text-white px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-2xl z-50 animate-bounce">
             Processing Neural Streams...
           </div>
         )}
-
-        {/* Mobile Navigation */}
-        <nav className="lg:hidden h-20 bg-[#0e0e11] border-t border-[#1f1f23] flex items-center justify-around px-4 sticky bottom-0 z-50">
-           <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center gap-1.5 ${activeTab === 'dashboard' ? 'text-brand-primary' : 'text-gray-500'}`}>
-              <LayoutDashboard size={20} />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Dashboard</span>
-           </button>
-           <button onClick={() => setActiveTab('analysis')} className={`flex flex-col items-center gap-1.5 ${activeTab === 'analysis' ? 'text-brand-primary' : 'text-gray-500'}`}>
-              <BarChart3 size={20} />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Analysis</span>
-           </button>
-           <button onClick={() => setActiveTab('actions')} className={`flex flex-col items-center gap-1.5 ${activeTab === 'actions' ? 'text-brand-primary' : 'text-gray-500'}`}>
-              <ListTodo size={20} />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Actions</span>
-           </button>
-           <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center gap-1.5 ${activeTab === 'settings' ? 'text-brand-primary' : 'text-gray-500'}`}>
-              <SettingsIcon size={20} />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Settings</span>
-           </button>
-        </nav>
 
         {/* Desktop Footer Status */}
         <footer className="hidden lg:flex h-10 border-t border-[#1f1f23] bg-[#0a0a0a] items-center justify-between px-8 text-[9px] font-bold uppercase tracking-[0.2em] text-gray-600">

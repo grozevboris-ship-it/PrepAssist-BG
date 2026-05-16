@@ -37,6 +37,12 @@ async function startServer() {
 
   const upload = multer({ storage: multer.memoryStorage() });
 
+  // Debug middleware
+  app.use((req, res, next) => {
+    console.log(`${req.method} ${req.url}`);
+    next();
+  });
+
   // API Routes
   app.get("/api/auth/github/url", (req, res) => {
     const redirectUri = `${process.env.APP_URL}/auth/callback`;
@@ -117,9 +123,13 @@ async function startServer() {
   });
 
   app.get("/api/auth/user", (req, res) => {
-    if (req.session && req.session.githubUser) {
-      res.json({ user: req.session.githubUser });
-    } else {
+    try {
+      if (req.session && req.session.githubUser) {
+        res.json({ user: req.session.githubUser });
+      } else {
+        res.json({ user: null });
+      }
+    } catch (e) {
       res.json({ user: null });
     }
   });
@@ -240,6 +250,52 @@ async function startServer() {
     }
   });
 
+  // Helper function for image generation
+  async function generateMeetingImage(imagePrompt: string, title: string) {
+    const modelsToTry = [
+      "gemini-2.5-flash-image",
+      "gemini-3.1-flash-image-preview",
+      "gemini-2.0-flash"
+    ];
+    
+    const prompt = `A professional, corporate-style conceptual cover image for a meeting titled "${title || 'Meeting Strategy'}". 
+    Visual concept: ${imagePrompt}. 
+    Style: Minimalist, modern glassmorphism, design, 8k resolution, suitable for a professional report cover.`;
+
+    for (const modelName of modelsToTry) {
+      try {
+        console.log(`Attempting image generation with model: ${modelName}`);
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          config: {
+            imageConfig: {
+              aspectRatio: "16:9"
+            }
+          }
+        });
+
+        const part = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+        if (part?.inlineData) {
+          console.log(`Image successfully generated with ${modelName}.`);
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
+        console.warn(`Model ${modelName} returned no image data.`);
+      } catch (error: any) {
+        // Log the error but continue to next model
+        console.warn(`Model ${modelName} failed: ${error.message}`);
+        
+        // If it's a safety error, we might want to stop early, but for quota (429) definitely continue
+        if (error.status === 429) {
+          console.log(`Quota exceeded for ${modelName}, trying next model...`);
+        }
+      }
+    }
+
+    console.error("All image generation models failed.");
+    return null;
+  }
+
   app.post("/api/meeting/prepare", upload.fields([{ name: 'notes' }, { name: 'slides' }]), async (req, res) => {
     try {
       const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -282,6 +338,9 @@ you must output ONLY valid JSON with this structure:
 }
 
 Ground all outputs strictly in the provided documents. Do not hallucinate facts.
+
+You must cite which document each risk came from. 
+Risks must be specific, not generic. Limit next steps to 3 max.
         
         ${additionalNotes ? `Additional Context from User: "${additionalNotes}"` : ""}` }
       ];
@@ -347,7 +406,19 @@ Ground all outputs strictly in the provided documents. Do not hallucinate facts.
       if (!text) {
         throw new Error("Empty response from AI model.");
       }
-      res.json(JSON.parse(text));
+
+      const meetingData = JSON.parse(text);
+
+      // Generate image immediately before returning
+      try {
+        const imageUrl = await generateMeetingImage(meetingData.cover_image_prompt, meetingData.summary.substring(0, 50));
+        meetingData.imageUrl = imageUrl;
+      } catch (imgErr) {
+        console.error("Image generation failed during prep:", imgErr);
+        // We still return the report even if image fails
+      }
+
+      res.json(meetingData);
     } catch (error: any) {
       console.error("Meeting Prep Error:", error);
       const errorMessage = error.message || "Failed to analyze materials.";
@@ -357,35 +428,31 @@ Ground all outputs strictly in the provided documents. Do not hallucinate facts.
 
   app.post("/api/meeting/image", async (req, res) => {
     try {
-      const { imagePrompt, title, model = "gemini-3-flash-preview" } = req.body;
-      const prompt = `A professional, corporate-style conceptual cover image for a meeting titled "${title}". 
-      Visual concept: ${imagePrompt}. 
-      Style: Minimalist, modern glassmorphism, design, 8k resolution, suitable for a professional report cover.`;
-
-      const response = await ai.models.generateContent({
-        model: model,
-        contents: {
-          parts: [{ text: prompt }],
-        },
-        config: {
-          imageConfig: {
-            aspectRatio: "16:9",
-            imageSize: "1K"
-          }
-        }
-      });
-
-      const part = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
-      if (part?.inlineData) {
-        res.json({ imageUrl: `data:image/png;base64,${part.inlineData.data}` });
+      const { imagePrompt, title } = req.body;
+      const imageUrl = await generateMeetingImage(imagePrompt, title);
+      
+      if (imageUrl) {
+        res.json({ imageUrl });
       } else {
-        console.error("Image generation failed. Response parts:", JSON.stringify(response.candidates?.[0]?.content?.parts));
-        res.status(500).json({ error: "No image generated." });
+        res.status(500).json({ error: "The models did not produce an image. This might be due to safety filters or model limitations." });
       }
     } catch (error: any) {
       console.error("Image Generation Error:", error);
       res.status(error.status || 500).json({ error: error.message || "Failed to generate image." });
     }
+  });
+
+
+  // Global Error Handler
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("Express Error Handler:", err);
+    if (res.headersSent) {
+      return next(err);
+    }
+    res.status(err.status || 500).json({ 
+      error: err.message || "Internal Server Error",
+      details: process.env.NODE_ENV !== "production" ? err.stack : undefined
+    });
   });
 
   // Vite middleware for development
