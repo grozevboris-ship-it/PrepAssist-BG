@@ -1,0 +1,8 @@
+{
+  "name": "App PrepAssistBG",
+  "description": "An AI-powered preparation assistant and creative space for designing and managing modular components or 'gems'.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
